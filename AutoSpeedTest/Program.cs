@@ -36,7 +36,7 @@ if (!Directory.Exists(Path.GetFullPath(testSettings.logDirectory)))
 	Directory.CreateDirectory(testSettings.logDirectory);
 }
 
-await LogTestHeaders(dataFilePath);
+LogTestHeaders(dataFilePath);
 
 //============ Execute Speed Test(s) ==============================================
 
@@ -52,7 +52,7 @@ if (testSettings.infinite)
 		try
 		{
 			results = RunSpeedTest(true);
-			await LogTestResults(results, dataFilePath);
+			LogTestResults(results, dataFilePath);
 			Log($"Test Complete");
 		}
 		catch (Exception ex)
@@ -72,7 +72,7 @@ if (testSettings.infinite)
 		Log($"===== Beginning Test {testsCompleted + 1} ==================================================================");
 		var results = RunSpeedTest(true);
 		testsCompleted++;
-		await LogTestResults(results, dataFilePath);
+		LogTestResults(results, dataFilePath);
 		Log("Test Complete");
 		if (i + 1 >= testSettings.trials)
 		{
@@ -153,7 +153,6 @@ SpeedTestResult RunSpeedTest(bool printResults = false)
 
 Server SelectBestServer(IEnumerable<Server> servers)
 {
-	Log();
 	Log("Best server by latency:");
 	var bestServer = servers.OrderBy(x => x.Latency).First();
 	PrintServerDetails(bestServer);
@@ -192,22 +191,22 @@ void PrintSpeed(string type, double speed)
 	}
 }
 
-async Task LogTestResults(SpeedTestResult result, string filepath)
+void LogTestResults(SpeedTestResult result, string filepath)
 {
 	string[] lines = { $"{DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt")},{result.downloadSpeed},{result.uploadSpeed}" };
-	await File.AppendAllLinesAsync(filepath, lines);
+	File.AppendAllLines(filepath, lines);
 }
 
-async Task LogTestHeaders(string filepath)
+void LogTestHeaders(string filepath)
 {	
 	string[] lines = { "Time,Download (Mbps),Upload (Mbps)" };
-	await File.AppendAllLinesAsync(filepath, lines);
+	File.AppendAllLines(filepath, lines);
 }
 
 
-async void Log(string s = "")
+void Log(string s = "")
 {
 	Console.WriteLine(s);
 	string[] lines = { s };
-	await File.AppendAllLinesAsync(logFilePath, lines);
+	File.AppendAllLines(logFilePath, lines);
 }
