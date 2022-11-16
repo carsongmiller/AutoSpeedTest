@@ -12,6 +12,7 @@ Console.WriteLine("Loading settings...");
 TestSettings testSettings = LoadTestSettings("./settings.xml");
 Settings settings;
 SpeedTestClient client;
+string dataFilePath;
 string logFilePath;
 
 if (testSettings == null)
@@ -27,14 +28,15 @@ Console.WriteLine($"Log Dir: {testSettings.logDirectory}");
 Console.WriteLine();
 
 
-logFilePath = $"{testSettings.logDirectory}/speedTestResults_{DateTime.Now.ToString("MM-dd-yyyy_HH-mm-ss")}.csv";
+dataFilePath = $"{testSettings.logDirectory}/speedTestResults_{DateTime.Now.ToString("MM-dd-yyyy_HH-mm-ss")}.csv";
+logFilePath = $"{testSettings.logDirectory}/log_{DateTime.Now.ToString("MM-dd-yyyy_HH-mm-ss")}.txt";
 
 if (!Directory.Exists(Path.GetFullPath(testSettings.logDirectory)))
 {
 	Directory.CreateDirectory(testSettings.logDirectory);
 }
 
-await LogTestHeaders(logFilePath);
+await LogTestHeaders(dataFilePath);
 
 //============ Execute Speed Test(s) ==============================================
 
@@ -45,21 +47,21 @@ if (testSettings.infinite)
 	//never leave this loop.  User needs to kill program
 	while(true)
 	{
-		Console.WriteLine($"===== Beginning Test {testsCompleted + 1} ==================================================================");
+		Log($"===== Beginning Test {testsCompleted + 1} ==================================================================");
 		SpeedTestResult results;
 		try
 		{
 			results = RunSpeedTest(true);
-			await LogTestResults(results, logFilePath);
-			Console.WriteLine($"Test Complete");
+			await LogTestResults(results, dataFilePath);
+			Log($"Test Complete");
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine($"Error running speed test. Skipping this one.\n{ex.Message}");
+			Log($"Error running speed test. Skipping this one.\n{ex.Message}");
 		}
 		
 		testsCompleted++;
-		Console.WriteLine($"Waiting {testSettings.interval} minutes until next test\n\n");
+		Log($"Waiting {testSettings.interval} minutes until next test\n\n");
 		Thread.Sleep((int)(testSettings.interval * 60000));
 	}
 
@@ -67,22 +69,22 @@ if (testSettings.infinite)
 {
 	for (int i = 0; i < testSettings.trials; i++)
 	{
-		Console.WriteLine($"===== Beginning Test {testsCompleted + 1} ==================================================================");
+		Log($"===== Beginning Test {testsCompleted + 1} ==================================================================");
 		var results = RunSpeedTest(true);
 		testsCompleted++;
-		await LogTestResults(results, logFilePath);
-		Console.WriteLine("Test Complete");
+		await LogTestResults(results, dataFilePath);
+		Log("Test Complete");
 		if (i + 1 >= testSettings.trials)
 		{
 			break;
 		}
-		Console.WriteLine($"Waiting {testSettings.interval} minutes until next test\n\n");
+		Log($"Waiting {testSettings.interval} minutes until next test\n\n");
 		Thread.Sleep((int)(testSettings.interval * 60000));
 	}
 }
 
-Console.WriteLine("All tests completed");
-Console.WriteLine($"Log file can be found at: {System.IO.Path.GetFullPath(logFilePath)}");
+Log("All tests completed");
+Log($"Log file can be found at: {System.IO.Path.GetFullPath(dataFilePath)}");
 
 
 //============ Function definitions ===============================================
@@ -132,7 +134,7 @@ TestSettings LoadTestSettings(string filename)
 
 SpeedTestResult RunSpeedTest(bool printResults = false)
 {
-	Console.WriteLine("Getting speedtest.net settings and server list...");
+	Log("Getting speedtest.net settings and server list...");
 	client = new SpeedTestClient();
 	settings = client.GetSettings();
 
@@ -140,7 +142,7 @@ SpeedTestResult RunSpeedTest(bool printResults = false)
 	var bestServer = SelectBestServer(servers);
 	var result = new SpeedTestResult();
 
-	Console.WriteLine("Testing speed...");
+	Log("Testing speed...");
 	result.downloadSpeed = client.TestDownloadSpeed(bestServer, settings.Download.ThreadsPerUrl) / 1024;
 	PrintSpeed("Download", result.downloadSpeed * 1024);
 	result.uploadSpeed = client.TestUploadSpeed(bestServer, settings.Upload.ThreadsPerUrl) / 1024;
@@ -151,18 +153,18 @@ SpeedTestResult RunSpeedTest(bool printResults = false)
 
 Server SelectBestServer(IEnumerable<Server> servers)
 {
-	Console.WriteLine();
-	Console.WriteLine("Best server by latency:");
+	Log();
+	Log("Best server by latency:");
 	var bestServer = servers.OrderBy(x => x.Latency).First();
 	PrintServerDetails(bestServer);
-	Console.WriteLine();
+	Log();
 	return bestServer;
 }
 
 IEnumerable<Server> SelectServers(bool verbose = false)
 {
-	Console.WriteLine();
-	Console.WriteLine("Selecting best server by distance...");
+	Log();
+	Log("Selecting best server by distance...");
 	var servers = settings.Servers.Take(10).ToList();
 
 	foreach (var server in servers)
@@ -175,36 +177,37 @@ IEnumerable<Server> SelectServers(bool verbose = false)
 
 void PrintServerDetails(Server server)
 {
-	Console.WriteLine("Hosted by {0} ({1}/{2}), distance: {3}km, latency: {4}ms", server.Sponsor, server.Name,
-		server.Country, (int)server.Distance / 1000, server.Latency);
+	Log($"Hosted by {server.Sponsor} ({server.Name}/{server.Country}), distance: {(int)server.Distance / 1000}km, latency: {server.Latency}ms");
 }
 
 void PrintSpeed(string type, double speed)
 {
 	if (speed > 1024)
 	{
-		Console.WriteLine("{0} speed: {1} Mbps", type, Math.Round(speed / 1024, 2));
+		Log($"{type} speed: {Math.Round(speed / 1024, 2)} Mbps");
 	}
 	else
 	{
-		Console.WriteLine("{0} speed: {1} Kbps", type, Math.Round(speed, 2));
+		Log($"{type} speed: {Math.Round(speed, 2)} Kbps");
 	}
 }
 
 async Task LogTestResults(SpeedTestResult result, string filepath)
 {
-	string[] lines =
-	{
-		$"{DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt")},{result.downloadSpeed},{result.uploadSpeed}"
-	};
+	string[] lines = { $"{DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt")},{result.downloadSpeed},{result.uploadSpeed}" };
 	await File.AppendAllLinesAsync(filepath, lines);
 }
 
 async Task LogTestHeaders(string filepath)
 {	
-	string[] lines =
-	{
-		"Time,Download (Mbps),Upload (Mbps)"
-	};
+	string[] lines = { "Time,Download (Mbps),Upload (Mbps)" };
 	await File.AppendAllLinesAsync(filepath, lines);
+}
+
+
+async void Log(string s = "")
+{
+	Console.WriteLine(s);
+	string[] lines = { s };
+	await File.AppendAllLinesAsync(logFilePath, lines);
 }
