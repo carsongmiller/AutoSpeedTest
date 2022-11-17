@@ -20,13 +20,6 @@ if (testSettings == null)
 	Console.WriteLine("Failed to load settings.  Quitting.");
 	return;
 }
-Console.WriteLine("Finished loading settings");
-Console.WriteLine($"Infinite: {testSettings.infinite}");
-Console.WriteLine($"Trials: {testSettings.trials}");
-Console.WriteLine($"Interval: {testSettings.interval}");
-Console.WriteLine($"Log Dir: {testSettings.logDirectory}");
-Console.WriteLine();
-
 
 dataFilePath = $"{testSettings.logDirectory}/speedTestResults_{DateTime.Now.ToString("MM-dd-yyyy_HH-mm-ss")}.csv";
 logFilePath = $"{testSettings.logDirectory}/log_{DateTime.Now.ToString("MM-dd-yyyy_HH-mm-ss")}.txt";
@@ -35,6 +28,13 @@ if (!Directory.Exists(Path.GetFullPath(testSettings.logDirectory)))
 {
 	Directory.CreateDirectory(testSettings.logDirectory);
 }
+
+Log("Finished loading settings:");
+Log($"Infinite: {testSettings.infinite}");
+if (!testSettings.infinite) Log($"Trials: {testSettings.trials}");
+Log($"Interval: {testSettings.interval} min");
+Log($"Log Dir: \"{testSettings.logDirectory}\"");
+Log();
 
 LogTestHeaders(dataFilePath);
 
@@ -47,21 +47,18 @@ if (testSettings.infinite)
 	//never leave this loop.  User needs to kill program
 	while(true)
 	{
-		Log($"===== Beginning Test {testsCompleted + 1} ==================================================================");
-		SpeedTestResult results;
+		Log($"===== Beginning Test {testsCompleted + 1} ({DateTime.Now}) ==================================================================");
 		try
 		{
-			results = RunSpeedTest(true);
-			LogTestResults(results, dataFilePath);
-			Log($"Test Complete");
+			RunSpeedTest(true);
 		}
 		catch (Exception ex)
 		{
 			Log($"Error running speed test. Skipping this one.\n{ex.Message}");
 		}
-		
+
 		testsCompleted++;
-		Log($"Waiting {testSettings.interval} minutes until next test\n\n");
+		Log($"Waiting {testSettings.interval} minute(s) until next test\n\n");
 		Thread.Sleep((int)(testSettings.interval * 60000));
 	}
 
@@ -69,33 +66,35 @@ if (testSettings.infinite)
 {
 	for (int i = 0; i < testSettings.trials; i++)
 	{
-		Log($"===== Beginning Test {testsCompleted + 1} ==================================================================");
-		var results = RunSpeedTest(true);
-		testsCompleted++;
-		LogTestResults(results, dataFilePath);
-		Log("Test Complete");
-		if (i + 1 >= testSettings.trials)
+		Log($"===== Beginning Test {testsCompleted + 1} ({DateTime.Now}) ==================================================================");
+		try
 		{
-			break;
+			RunSpeedTest(true);
 		}
-		Log($"Waiting {testSettings.interval} minutes until next test\n\n");
+		catch (Exception ex)
+		{
+			Log($"Error running speed test. Skipping this one.\n{ex.Message}");
+		}
+
+		testsCompleted++;
+		Log($"Waiting {testSettings.interval} minute(s) until next test\n\n");
 		Thread.Sleep((int)(testSettings.interval * 60000));
 	}
 }
 
 Log("All tests completed");
-Log($"Log file can be found at: {System.IO.Path.GetFullPath(dataFilePath)}");
+Log($"Log file can be found at: {Path.GetFullPath(dataFilePath)}");
+
 
 
 //============ Function definitions ===============================================
-
 
 TestSettings LoadTestSettings(string filename)
 {
 	XmlSerializer serializer = new XmlSerializer(typeof(TestSettings));
 	TestSettings i;
 
-	if (System.IO.File.Exists(filename))
+	if (File.Exists(filename))
 	{
 		//Settings file exists.  Attempt to read
 		try
@@ -143,10 +142,28 @@ SpeedTestResult RunSpeedTest(bool printResults = false)
 	var result = new SpeedTestResult();
 
 	Log("Testing speed...");
-	result.downloadSpeed = client.TestDownloadSpeed(bestServer, settings.Download.ThreadsPerUrl) / 1024;
+	try
+	{
+		result.downloadSpeed = client.TestDownloadSpeed(bestServer, settings.Download.ThreadsPerUrl, 4) / 1024;
+	}
+	catch (Exception ex)
+	{
+		Log($"Error testing download speed.  Logging zero.  Error: {ex.Message}");
+	}
 	PrintSpeed("Download", result.downloadSpeed * 1024);
-	result.uploadSpeed = client.TestUploadSpeed(bestServer, settings.Upload.ThreadsPerUrl) / 1024;
+
+	try
+	{
+		result.uploadSpeed = client.TestUploadSpeed(bestServer, settings.Upload.ThreadsPerUrl, 4) / 1024;
+	}
+	catch (Exception ex)
+	{
+		Log($"Error testing upload speed.  Logging zero.  Error: {ex.Message}");
+	}
 	PrintSpeed("Upload", result.uploadSpeed * 1024);
+
+	LogTestResults(result, dataFilePath);
+	Log($"Test Complete");
 
 	return result;
 }
@@ -163,7 +180,7 @@ Server SelectBestServer(IEnumerable<Server> servers)
 IEnumerable<Server> SelectServers(bool verbose = false)
 {
 	Log();
-	Log("Selecting best server by distance...");
+	Log("Selecting best server by latency...");
 	var servers = settings.Servers.Take(10).ToList();
 
 	foreach (var server in servers)
@@ -193,7 +210,11 @@ void PrintSpeed(string type, double speed)
 
 void LogTestResults(SpeedTestResult result, string filepath)
 {
-	string[] lines = { $"{DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt")},{result.downloadSpeed},{result.uploadSpeed}" };
+	//Store blanks if there's no data (represented by -1)
+	string down = result.downloadSpeed != -1 ? result.downloadSpeed.ToString() : "";
+	string up = result.uploadSpeed != -1 ? result.uploadSpeed.ToString() : "";
+
+	string[] lines = { $"{DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt")},{down},{up}" };
 	File.AppendAllLines(filepath, lines);
 }
 
